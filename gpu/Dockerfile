@@ -5,20 +5,20 @@
 
 # CALL: docker image build -t python-opencv-ffmpeg:py36 -f cpu/Dockerfile --build-arg PYTHON_VERSION=3.6 .
 
-ARG CUDA_VERSION=11.4.0
+ARG CUDA_VERSION=11.7.1
 
-FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu20.04
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 LABEL maintainer="https://github.com/Borda"
 
-ARG PYTHON_VERSION=3.9
+ARG PYTHON_VERSION=3.10
 ARG OPENCV_VERSION=4.6.0
 
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
 # https://techoverflow.net/2019/05/18/how-to-fix-configuring-tzdata-interactive-input-when-building-docker-images/
 ENV DEBIAN_FRONTEND=noninteractive
-ENV TZ=Europe/Prague
+ENV TZ=Europe/Paris
 
 # ENV LD_LIBRARY_PATH /usr/local/${CUDA}/compat:$LD_LIBRARY_PATH
 
@@ -71,7 +71,7 @@ RUN \
         apt-utils \
         pkg-config \
         checkinstall \
-        qt5-default \
+        qtcreator qtbase5-dev qt5-qmake \
         build-essential \
         libopenblas-base \
         libopenblas-dev \
