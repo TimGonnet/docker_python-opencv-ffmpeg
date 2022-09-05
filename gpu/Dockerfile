@@ -184,7 +184,7 @@ RUN \
         libjpeg8-dev \
         libpng-dev \
         libtiff5-dev \
-        libdc1394-22-dev \
+        libdc1394-dev \
         libxine2-dev \
         libv4l-dev \
         libgstreamer1.0-dev \
@@ -192,7 +192,7 @@ RUN \
         libglew-dev \
         libpostproc-dev \
         libeigen3-dev \
-        libtbb-dev \
+        # libtbb-dev \
         zlib1g-dev \
     && \
     apt-get autoremove -y && \
@@ -204,3 +204,5 @@ RUN \
     #ldd `which ffmpeg` && \
     python --version && \
     python -c "import cv2 ; print(cv2.__version__)"
+
+RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
