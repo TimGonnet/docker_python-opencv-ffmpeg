@@ -7,7 +7,7 @@
 
 ARG CUDA_VERSION=11.7.1
 
-FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04 as builder
 
 LABEL maintainer="https://github.com/Borda"
 
@@ -52,6 +52,15 @@ RUN \
     rm get-pip.py
 
 ENV PYTHONPATH="/usr/lib/python${PYTHON_VERSION}/site-packages:/usr/local/lib/python${PYTHON_VERSION}/site-packages"
+ENV CMAKE_INSTALL_PREFIX="/opencv_install"
+
+# WORKDIR /venv
+
+RUN apt install -y python${PYTHON_VERSION}-venv
+
+RUN python${PYTHON_VERSION} -m venv /venv
+
+ENV SITE_PACKAGES /venv/lib/python${PYTHON_VERSION}/site-packages
 
 RUN \
     # Add CUDA libs paths
@@ -126,12 +135,13 @@ RUN \
       -D BUILD_DOCS=ON \
       -D BUILD_PERF_TESTS=OFF \
       -D BUILD_TESTS=OFF \
-      -D CMAKE_INSTALL_PREFIX=/usr/local \
+      -D CMAKE_INSTALL_PREFIX=${CMAKE_INSTALL_PREFIX} \
       -D OPENCV_EXTRA_MODULES_PATH=/opencv_contrib/modules \
       -D BUILD_opencv_python3=$( [ ${PYTHON_VERSION%%.*} -ge 3 ] && echo "ON" || echo "OFF" ) \
       -D BUILD_opencv_python2=$( [ ${PYTHON_VERSION%%.*} -lt 3 ] && echo "ON" || echo "OFF" ) \
       -D PYTHON${PYTHON_VERSION%%.*}_EXECUTABLE=$(which python${PYTHON_VERSION}) \
       -D PYTHON_DEFAULT_EXECUTABLE=$(which python${PYTHON_VERSION}) \
+      -D OPENCV_PYTHON3_INSTALL_PATH=${SITE_PACKAGES} \
       -D BUILD_EXAMPLES=OFF \
       -D WITH_IPP=OFF \
       -D WITH_FFMPEG=ON \
@@ -161,48 +171,119 @@ RUN \
 # Build, Test and Install
     cd /opencv/build && \
     make -j$(nproc) && \
-    make install && \
-    ldconfig && \
+    make install 
 
-# cleaning
-   apt-get -y remove \
-        unzip \
-        cmake \
-        gfortran \
-        apt-utils \
-        pkg-config \
-        checkinstall \
-        build-essential \
-        libopenblas-dev \
-        liblapack-dev \
-        libatlas-base-dev \
-        #libgtk-3-dev \
-        libavcodec-dev \
-        libavformat-dev \
-        libavutil-dev \
-        libswscale-dev \
-        libjpeg8-dev \
-        libpng-dev \
-        libtiff5-dev \
-        libdc1394-dev \
-        libxine2-dev \
-        libv4l-dev \
-        libgstreamer1.0-dev \
-        libgstreamer-plugins-base1.0-dev \
-        libglew-dev \
-        libpostproc-dev \
-        libeigen3-dev \
-        # libtbb-dev \
-        zlib1g-dev \
+# RUN ldconfig && \
+
+# # cleaning
+#    apt-get -y remove \
+#         unzip \
+#         cmake \
+#         gfortran \
+#         apt-utils \
+#         pkg-config \
+#         checkinstall \
+#         build-essential \
+#         libopenblas-dev \
+#         liblapack-dev \
+#         libatlas-base-dev \
+#         #libgtk-3-dev \
+#         libavcodec-dev \
+#         libavformat-dev \
+#         libavutil-dev \
+#         libswscale-dev \
+#         libjpeg8-dev \
+#         libpng-dev \
+#         libtiff5-dev \
+#         libdc1394-dev \
+#         libxine2-dev \
+#         libv4l-dev \
+#         libgstreamer1.0-dev \
+#         libgstreamer-plugins-base1.0-dev \
+#         libglew-dev \
+#         libpostproc-dev \
+#         libeigen3-dev \
+#         # libtbb-dev \
+#         zlib1g-dev \
+#     && \
+#     apt-get autoremove -y && \
+#     apt-get clean && \
+#     rm -rf /opencv /opencv_contrib /var/lib/apt/lists/* && \
+
+# RUN ls /venv/lib/python3.10/dist-packages/
+# RUN python${PYTHON_VERSION} -m venv /venv
+# RUN pip3  install numpy
+# RUN ls /venv/lib/python3.10/
+# RUN ls /venv/lib/python3.10/site-packages/
+# RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+
+
+FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu22.04
+# Turns off writing .pyc files; superfluous on an ephemeral container.
+ENV PYTHONDONTWRITEBYTECODE=1
+# Seems to speed things up
+ENV PYTHONUNBUFFERED=1
+
+
+ARG CUDA_VERSION=11.7.1
+ARG PYTHON_VERSION=3.10
+ARG OPENCV_VERSION=4.6.0
+
+# Needed for string substitution
+SHELL ["/bin/bash", "-c"]
+# https://techoverflow.net/2019/05/18/how-to-fix-configuring-tzdata-interactive-input-when-building-docker-images/
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Paris
+
+RUN \
+    # add sources for older pythons
+    apt-get update -qq --fix-missing && \
+    apt-get install -y --no-install-recommends software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-add-repository universe && \
+    apt-get -y update -qq --fix-missing && \
+    apt-get -y install --no-install-recommends \
+        python${PYTHON_VERSION} \
+        python${PYTHON_VERSION}-dev \
+        $( [ ${PYTHON_VERSION%%.*} -ge 3 ] && echo "python${PYTHON_VERSION}-distutils" ) \
+        wget \
     && \
-    apt-get autoremove -y && \
-    apt-get clean && \
-    rm -rf /opencv /opencv_contrib /var/lib/apt/lists/* && \
 
-# Call default command.
-    ffmpeg -version && \
-    #ldd `which ffmpeg` && \
+    # Set the default python and install PIP packages
+    update-alternatives --install /usr/bin/python${PYTHON_VERSION%%.*} python${PYTHON_VERSION%%.*} /usr/bin/python${PYTHON_VERSION} 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 && \
+
+    # install python dependencies
+    # sysctl -w net.ipv4.ip_forward=1 ; \
+    if [[ "$PYTHON_VERSION" == "2.7" || "$PYTHON_VERSION" == "3.6" ]]; then \
+        wget https://bootstrap.pypa.io/pip/$PYTHON_VERSION/get-pip.py --progress=bar:force:noscroll --no-check-certificate ; \
+    else \
+        apt-get -y install --no-install-recommends python${PYTHON_VERSION}-distutils ; \
+        wget https://bootstrap.pypa.io/get-pip.py --progress=bar:force:noscroll --no-check-certificate ; \
+    fi && \
+    python${PYTHON_VERSION} get-pip.py && \
+    rm get-pip.py
+
+RUN apt-get -y install --no-install-recommends \
+        ffmpeg \
+        qtbase5-dev \ 
+        libgstreamer1.0 \
+        libgstreamer-plugins-base1.0-0 \
+        libtbb-dev
+# RUN apt-get -y install build-essential
+
+ENV CMAKE_INSTALL_PREFIX="/opencv_install"
+COPY --from=builder ${CMAKE_INSTALL_PREFIX} ${CMAKE_INSTALL_PREFIX}
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:${PATH}"
+RUN ldconfig ${CMAKE_INSTALL_PREFIX}
+
+
+RUN pip3 install --no-cache-dir numpy && \
+    pip3 install --no-cache-dir torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
+
+
+RUN ffmpeg -version && \
     python --version && \
+    python -c "import torch ; print(torch.__version__)" && \
     python -c "import cv2 ; print(cv2.__version__)"
-
-RUN pip3 install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cu116
